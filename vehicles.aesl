@@ -9,8 +9,9 @@
 <constant value="32767" name="INT16_MAX"/>
 <constant value="4" name="LED_LOW"/>
 <constant value="32" name="LED_MAX"/>
+<constant value="500" name="MOTOR_MAX"/>
 <constant value="0" name="VEHICLE_INDEX_MIN"/>
-<constant value="4" name="VEHICLE_INDEX_MAX"/>
+<constant value="5" name="VEHICLE_INDEX_MAX"/>
 <constant value="500" name="VEHICLE1_SPEED_MULTIPLIER"/>
 <constant value="3" name="VEHICLE3_SPEED_TEMPERATURE_DIVIDER"/>
 <constant value="4" name="VEHICLE3_SPEED_MIC_DIVIDER"/>
@@ -20,6 +21,12 @@
 <constant value="15" name="VEHICLE4_PROX_THRESHOLD"/>
 <constant value="3" name="VEHICLE4_SPEED_MIC_DIVIDER"/>
 <constant value="10" name="VEHICLE4_SPEED_MIC_OFFSET"/>
+<constant value="5000" name="VEHICLE5_TIMER_PERIOD_MS"/>
+<constant value="1000" name="VEHICLE5_ACTIVATION_DURATION_MS"/>
+<constant value="300" name="VEHICLE5_TEMPERATURE_REFERENCE"/>
+<constant value="-250" name="VEHICLE5_SPEED_MIN"/>
+<constant value="250" name="VEHICLE5_SPEED_MAX"/>
+<constant value="5" name="VEHICLE5_LOOP_COUNTS"/>
 
 
 <!--show keywords state-->
@@ -29,14 +36,16 @@
 <!--node thymio-II-->
 <node nodeId="1" name="thymio-II"># Constant array
 var proxHorizontalDirection[7] = [1,1,1,1,1,-1,-1]
-var proxHorizontalWeightVehicle1[7] = [2,2,2,2,2,-10,-10]
 var vehicle2And3SpeedSets[10] = [0, 500, 150, 350, 250, 250, 350, 150, 500, 0] # 5 pairs of left/right (or inversely) speeds
 
 # Variables
-var i = 0
+var i
+var argmax
+var dummyVariable
 
 var proxHorizontalMaxHundredth = 0
 var proxHorizontal[7]
+var proxHorizontalArrayTmp[7]
 var proxHorizontalTmp
 
 # Vehicle/behavior variables
@@ -54,12 +63,16 @@ var vehicle3MultiSensorEnabled
 var vehicle3SpeedMic
 var vehicle3SpeedTemperature
 var vehicle4SpeedMic
+var vehicle5DoMotion
+var vehicle5LoopCounter
+var vehicle5ProxGroundMean
 
 # Functions
 sub init
 	callsub resetLeds
 	mic.threshold = 1 # event on every temperature measurement
 	timer.period[0] = 0 # disable timer 0
+	timer.period[1] = 0 # disable timer 0
 	
 	proxHorizontalMaxHundredth = 0
 	
@@ -69,6 +82,8 @@ sub init
 	vehicle2FearEnabled = 0
 	vehicle3ExplorationEnabled = 0
 	vehicle3MultiSensorEnabled = 0
+	vehicle5DoMotion = 0
+	vehicle5LoopCounter = 0
 	
 	motor.left.target = 0
 	motor.right.target = 0
@@ -87,24 +102,30 @@ sub processProxHorizontal
 	vehicle1To3ProxHorizontalNormHundredth = 0
 	vehicle1BidirectionalProxHorizontalDirection = 0
 	vehicle2And3Direction = -1
-	for i in 0:6 do
-		# Get max bounds
-		proxHorizontalTmp = proxHorizontalDirection[i]*proxHorizontal[i]/100
-		if (proxHorizontalTmp > proxHorizontalMaxHundredth) then
-			proxHorizontalMaxHundredth = proxHorizontalTmp
-		end
-		
-		# Maximum value for vehicle 1, direction for vehicle 2
-		if (proxHorizontalTmp > vehicle1To3ProxHorizontalNormHundredth) then
-			if  ((vehicleIndex == 1) and (vehicle1EnableBidirectional == 0) and (proxHorizontalDirection[i] > 0)) or ((vehicleIndex >= 2) and (vehicleIndex &lt;= 4)) then
-				vehicle1To3ProxHorizontalNormHundredth = proxHorizontalTmp
+	
+	call math.mul(proxHorizontalArrayTmp, proxHorizontalDirection, proxHorizontal)
+	call math.stat(proxHorizontalArrayTmp, dummyVariable, proxHorizontalTmp, dummyVariable)
+	# Get max bounds
+	if (proxHorizontalTmp/100 > proxHorizontalMaxHundredth) then
+		proxHorizontalMaxHundredth = proxHorizontalTmp/100
+	end
+	
+	if  ((vehicleIndex == 1) and (vehicle1EnableBidirectional == 0) and (proxHorizontalDirection[i] > 0)) or ((vehicleIndex >= 2) and (vehicleIndex &lt;= 4)) then
+		for i in 0:6 do
+			proxHorizontalTmp = proxHorizontalDirection[i]*proxHorizontal[i]/100
+			# Maximum value for vehicle 1, direction for vehicle 2 and above
+			if (proxHorizontalTmp > vehicle1To3ProxHorizontalNormHundredth) then
+				vehicle1To3ProxHorizontalNormHundredth = proxHorizontalTmp/100
 				vehicle1BidirectionalProxHorizontalDirection = proxHorizontalDirection[i] # always 1
 				vehicle2And3Direction = i
-			elseif (vehicle1EnableBidirectional == 1) then
-				vehicle1To3ProxHorizontalNormHundredth = proxHorizontalTmp
-				vehicle1BidirectionalProxHorizontalDirection = proxHorizontalDirection[i]
 			end
 		end
+	elseif ((vehicleIndex == 1) and (vehicle1EnableBidirectional == 1)) then
+		call math.mul(proxHorizontalArrayTmp, proxHorizontalDirection, proxHorizontal)
+		call math.stat(proxHorizontalArrayTmp, dummyVariable, proxHorizontalTmp, dummyVariable)
+		call math.argbounds(proxHorizontalArrayTmp, dummyVariable, 
+				vehicle1To3ProxHorizontalNormHundredth = proxHorizontalTmp/100
+				vehicle1BidirectionalProxHorizontalDirection = proxHorizontalDirection[i]
 	end
 
 # Vehicle 1, getting around
@@ -206,6 +227,27 @@ sub vehicle4
 	call leds.top(LED_MAX, 0, LED_MAX/2)
 	call leds.bottom.right(LED_MAX, 0, LED_MAX/2)
 	call leds.bottom.left(LED_MAX, 0, LED_MAX/2)
+	
+# Vehicle 5, logic
+sub vehicle5
+	if (vehicle5DoMotion == 1) then
+		call math.stat(prox.ground.delta, dummyVariable, dummyVariable,vehicle5ProxGroundMean)
+		call math.min(motor.left.target, VEHICLE5_SPEED_MIN+vehicle5ProxGroundMean, VEHICLE5_SPEED_MAX)
+		motor.right.target = VEHICLE5_SPEED_MIN
+		
+		if  (vehicle5LoopCounter == VEHICLE5_LOOP_COUNTS) then
+			motor.right.target = motor.left.target
+			motor.left.target = VEHICLE5_SPEED_MIN
+		end
+	else
+		motor.left.target = 0
+		motor.right.target = 0
+	end
+	
+	# Visual feedback
+	call leds.top(LED_MAX, 0, LED_MAX)
+	call leds.bottom.right(LED_MAX, 0, LED_MAX)
+	call leds.bottom.left(LED_MAX, 0, LED_MAX)
 
 # Behavioral events
 onevent prox
@@ -223,6 +265,9 @@ onevent prox
 		callsub vehicle3
 	elseif (vehicleIndex == 4) then
 		callsub vehicle4
+	elseif (vehicleIndex == 5) then
+		callsub vehicle5
+		timer.period[0] = VEHICLE5_TIMER_PERIOD_MS
 	end
 	
 	if (lastVehicleIndex != vehicleIndex) then
@@ -249,6 +294,19 @@ onevent temperature
 	else
 		vehicle3SpeedTemperature = 0
 	end
+	
+onevent timer0
+	timer.period[0] = VEHICLE5_TIMER_PERIOD_MS*temperature/VEHICLE5_TEMPERATURE_REFERENCE
+	timer.period[1] = VEHICLE5_ACTIVATION_DURATION_MS
+	vehicle5DoMotion = 1
+	vehicle5LoopCounter = vehicle5LoopCounter+1
+	if  (vehicle5LoopCounter > VEHICLE5_LOOP_COUNTS) then
+		vehicle5LoopCounter = 1
+	end
+
+onevent timer1
+	vehicle5DoMotion = 0
+
 # Buttons events
 onevent button.center
 	callsub init
@@ -257,7 +315,6 @@ onevent button.right
 	if (button.right == 1) then # on press
 		call math.min(vehicleIndex, vehicleIndex+1, VEHICLE_INDEX_MAX)
 	end
-	
 	
 onevent button.left
 	if (button.left == 1) then # on press
@@ -281,6 +338,7 @@ onevent button.backward
 			end
 		end
 	end
+
 onevent button.forward
 	if (button.forward == 1) then # on press
 		if  (vehicleIndex == 1) then
