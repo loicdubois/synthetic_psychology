@@ -1,6 +1,6 @@
 # synthetic_psychology
 ## Introduction
-Valentino Braitenberg presented in 1986 a simple, yet extremely interesting, way of creating simple robots (vehicles) using direct sensors to actuators wirings. In an increasing level of complexity, various behaviours can be derived from these simple connections, from simply moving around to attraction or agression (vehicles 1 to 3). For the vehicles 4 and 5, nonlinear relation between inputs and outputs, as well as threshold devices (logic gates) allows to introduce **values**, **numbers** and **memory**. 
+Valentino Braitenberg presented in 1986 a simple, yet extremely interesting, way of creating simple robots (vehicles) using direct sensors to actuators wirings. In an increasing level of complexity, various behaviours can be derived from these simple connections, from simply **moving around** to **attraction** or **agression** (vehicles 1 to 3). For the vehicles 4 and 5, nonlinear relation between inputs and outputs, as well as threshold devices (logic gates) allows to introduce **values**, **numbers** and **memory**. 
 
 This type of architecture is a prime example of what is called reactive architecture, in which there is a proximity between sensors and actuators. 
 
