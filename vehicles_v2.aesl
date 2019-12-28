@@ -1,0 +1,330 @@
+<!DOCTYPE aesl-source>
+<network>
+
+
+<!--list of global events-->
+
+
+<!--list of constants-->
+<constant value="32" name="LED_MAX"/>
+<constant value="8" name="LED_LOW"/>
+<constant value="500" name="MOTOR_MAX"/>
+<constant value="0" name="VEHICLE_INDEX_MIN"/>
+<constant value="5" name="VEHICLE_INDEX_MAX"/>
+<constant value="9" name="VEHICLE2_PROX_HORIZONTAL_DIVIDER"/>
+<constant value="3" name="VEHICLE3_SPEED_TEMPERATURE_DIVIDER"/>
+<constant value="4" name="VEHICLE3_SPEED_MIC_DIVIDER"/>
+<constant value="10" name="VEHICLE4_MIC_THRESHOLD"/>
+<constant value="15" name="VEHICLE4_PROX_THRESHOLD"/>
+<constant value="10" name="VEHICLE4_SPEED_MIC_OFFSET"/>
+<constant value="3" name="VEHICLE4_SPEED_MIC_DIVIDER"/>
+<constant value="200" name="VEHICLE5_RANGE_TEMPERATURE_MIN"/>
+<constant value="350" name="VEHICLE5_RANGE_TEMPERATURE_MAX"/>
+<constant value="100" name="VEHICLE5_MIC_FEAR_THRESHOLD"/>
+
+
+<!--show keywords state-->
+<keywords flag="true"/>
+
+
+<!--node thymio-II-->
+<node nodeId="1" name="thymio-II">############ Variables ############
+var dummyVariable
+
+var proxHorizontalLeft
+var proxHorizontalRight
+var proxHorizontalMax
+var proxHorizontalBack
+
+# Vehicle/behavior variables
+var vehicleIndex
+var lastVehicleIndex
+
+var vehicle2FearEnabled
+var vehicle3ExplorationEnabled
+var vehicle3MultiSensorEnabled
+var vehicle3SpeedMic
+var vehicle3SpeedTemperature
+var vehicle4SpeedMic
+var vehicle5FearShock
+var vehicle5FearEnabled
+
+############ Functions ############
+sub init
+	callsub resetLeds
+	mic.threshold = 1 # event on every temperature measurement
+	timer.period[0] = 0 # disable timer 0
+	timer.period[1] = 0 # disable timer 0
+	
+	vehicleIndex = 0
+	lastVehicleIndex = -1
+	vehicle2FearEnabled = 0
+	vehicle3ExplorationEnabled = 0
+	vehicle3MultiSensorEnabled = 0
+	vehicle5FearShock = 0
+	
+	motor.left.target = 0
+	motor.right.target = 0
+	
+sub resetLeds
+	call leds.top(0, 0, 0)
+	call leds.bottom.right(0, 0, 0)
+	call leds.bottom.left(0, 0, 0)
+	call leds.circle(0,0,0,0,0,0,0,0)
+	
+	call leds.rc(0)
+	call leds.sound(0)
+	call leds.temperature(0,0)
+	
+
+# Vehicle 1, getting around
+sub vehicle1
+	motor.left.target = temperature
+	motor.right.target = temperature
+
+	# Visual feedback
+	call leds.top(LED_MAX, LED_MAX, 0)
+	call leds.bottom.right(LED_MAX, LED_MAX, 0)
+	call leds.bottom.left(LED_MAX, LED_MAX, 0)
+	call leds.circle(LED_MAX,0,0,0,0,0,0,0)
+	
+# Vehicle 2, fear and agression
+sub vehicle2
+	# Get correct set of speeds
+	if (proxHorizontalRight > 0) or (proxHorizontalLeft > 0)  then
+		if (vehicle2FearEnabled == 0) then # agression
+			motor.left.target = proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			motor.right.target = proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+		else # fear
+			motor.left.target = proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			motor.right.target = proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+		end
+	else
+		motor.left.target = 0
+		motor.right.target = 0
+	end
+	
+	# Visual feedback
+	call leds.top(LED_MAX, LED_MAX/2, 0)
+	call leds.bottom.right(LED_MAX, LED_MAX/2, 0)
+	call leds.bottom.left(LED_MAX, LED_MAX/2, 0)
+	call leds.circle(LED_MAX*(1-vehicle2FearEnabled),0,0,0,LED_MAX*vehicle2FearEnabled,0,0,0)
+	
+# Vehicle 3, love
+sub vehicle3
+	# Get correct set of speeds
+	if (proxHorizontalRight > 0) or (proxHorizontalLeft > 0)  then
+		if (vehicle3ExplorationEnabled == 0) then # love
+			motor.left.target = MOTOR_MAX - proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			motor.right.target = MOTOR_MAX - proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+		else # exploration
+			motor.left.target = MOTOR_MAX - proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			motor.right.target = MOTOR_MAX - proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+		end
+	else
+		motor.left.target = 0
+		motor.right.target = 0
+	end
+	
+	# Vehicle 3c
+	if (vehicle3MultiSensorEnabled == 1) then
+		motor.left.target = motor.left.target + vehicle3SpeedMic + vehicle3SpeedTemperature
+		motor.right.target = motor.right.target - vehicle3SpeedMic + vehicle3SpeedTemperature
+	end
+	
+	# Visual feedback
+	call leds.top(LED_MAX, 0, 0)
+	call leds.bottom.right(LED_MAX, 0, 0)
+	call leds.bottom.left(LED_MAX, 0, 0)
+	call leds.circle(LED_MAX*(1-vehicle3ExplorationEnabled),LED_MAX*vehicle3ExplorationEnabled,LED_MAX*vehicle3MultiSensorEnabled,0,LED_MAX*vehicle3MultiSensorEnabled,0,LED_MAX*vehicle3MultiSensorEnabled,LED_MAX*vehicle3ExplorationEnabled)
+
+# Vehicle 4, values and special tastes
+sub vehicle4
+	if (proxHorizontalRight > 0) or (proxHorizontalLeft > 0)  then
+		# aggression/love depending on threshold
+		if (proxHorizontalMax &lt; VEHICLE4_PROX_THRESHOLD) then
+			motor.left.target = proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			motor.right.target = proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+		else
+			motor.left.target = MOTOR_MAX - proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			motor.right.target = MOTOR_MAX - proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+		end
+	else
+		motor.left.target = 0
+		motor.right.target = 0		
+	end
+		
+	# Rotation based on sound
+	motor.left.target = motor.left.target + vehicle4SpeedMic
+	motor.right.target = motor.right.target - vehicle4SpeedMic
+	
+	# Visual feedback
+	call leds.top(LED_MAX, 0, LED_MAX/2)
+	call leds.bottom.right(LED_MAX, 0, LED_MAX/2)
+	call leds.bottom.left(LED_MAX, 0, LED_MAX/2)
+	
+# Vehicle 5, logic
+sub vehicle5
+	# Temperature range
+	if (temperature > VEHICLE5_RANGE_TEMPERATURE_MIN) and (temperature &lt; VEHICLE5_RANGE_TEMPERATURE_MAX) then
+		if  (vehicle5FearShock == 0) then
+			# Fear of obstacles in the front until there is an obstacle behind
+			if ((proxHorizontalRight > 0) or (proxHorizontalLeft > 0)) and (proxHorizontalBack == 0) then
+				motor.left.target = -proxHorizontalMax/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+				motor.right.target = -proxHorizontalMax/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			elseif  (proxHorizontalBack > 0) then # turn on itself
+				motor.left.target = -MOTOR_MAX
+				motor.right.target = MOTOR_MAX
+			else
+				motor.left.target = 0
+				motor.right.target = 0
+			end
+		else
+			# Love until there is a shock
+			if ((proxHorizontalRight > 0) or (proxHorizontalLeft > 0)) and (vehicle5FearEnabled == 0) then # love
+				motor.left.target = MOTOR_MAX - proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+				motor.right.target = MOTOR_MAX - proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			elseif  (vehicle5FearEnabled == 1) then
+				motor.left.target = proxHorizontalLeft/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+				motor.right.target = proxHorizontalRight/VEHICLE2_PROX_HORIZONTAL_DIVIDER
+			else
+				motor.left.target = 0
+				motor.right.target = 0
+			end
+		end
+	else
+		motor.left.target = 0
+		motor.right.target = 0
+	end
+	
+	# Visual feedback
+	call leds.top(LED_MAX, 0, LED_MAX)
+	call leds.bottom.right(LED_MAX, 0, LED_MAX)
+	call leds.bottom.left(LED_MAX, 0, LED_MAX)
+	if (temperature > VEHICLE5_RANGE_TEMPERATURE_MIN) and (temperature &lt; VEHICLE5_RANGE_TEMPERATURE_MAX) then
+		call leds.circle(LED_MAX*vehicle5FearShock,0,0,0,LED_MAX*(1-vehicle5FearShock),0,0,0)
+	else
+		call leds.circle(LED_LOW*vehicle5FearShock,0,0,0,LED_LOW*(1-vehicle5FearShock),0,0,0)
+	end
+
+############ Events ############
+onevent temperature
+	# Behavior selection
+	if (vehicleIndex == 0) then
+		motor.left.target = 0
+		motor.right.target = 0
+	elseif (vehicleIndex == 1) then
+		callsub vehicle1
+	elseif (vehicleIndex == 3) then
+		if (vehicle3MultiSensorEnabled == 1) then
+			vehicle3SpeedTemperature = temperature/VEHICLE3_SPEED_TEMPERATURE_DIVIDER
+		else
+			vehicle3SpeedTemperature = 0
+		end
+	end
+
+onevent prox
+	proxHorizontalLeft = prox.horizontal[1]
+	proxHorizontalRight = prox.horizontal[3]
+	call math.max(proxHorizontalMax, proxHorizontalLeft, proxHorizontalRight)
+	call math.max(proxHorizontalBack, prox.horizontal[5], prox.horizontal[6])
+	
+	# Behavior selection
+	if (vehicleIndex == 0) then
+		motor.left.target = 0
+		motor.right.target = 0
+	elseif (vehicleIndex == 2) then
+		callsub vehicle2
+	elseif (vehicleIndex == 3) then
+		callsub vehicle3
+	elseif (vehicleIndex == 4) then
+		callsub vehicle4
+	elseif (vehicleIndex == 5) then
+		callsub vehicle5
+	end
+	
+	if (lastVehicleIndex != vehicleIndex) then
+		lastVehicleIndex = vehicleIndex
+		callsub resetLeds
+	end
+
+onevent mic
+	# Behavior selection
+	if (vehicleIndex == 3) then
+		if (vehicle3MultiSensorEnabled == 1) then
+			vehicle3SpeedMic = mic.intensity/VEHICLE3_SPEED_MIC_DIVIDER
+		else
+			vehicle3SpeedMic = 0
+		end
+	elseif (vehicleIndex == 4) then
+		if  (mic.intensity > VEHICLE4_MIC_THRESHOLD) then
+			vehicle4SpeedMic = VEHICLE4_SPEED_MIC_OFFSET + mic.intensity/VEHICLE4_SPEED_MIC_DIVIDER
+		else
+			vehicle4SpeedMic = 0
+		end
+	elseif  (vehicleIndex == 5) then
+		if (vehicle5FearShock == 1) and (mic.intensity &lt; VEHICLE5_MIC_FEAR_THRESHOLD) then
+			vehicle5FearEnabled = 0
+		end
+	end
+	
+onevent tap
+	if  (vehicleIndex == 5) then
+		if (vehicle5FearShock == 1) then
+			vehicle5FearEnabled = 1
+		end
+	end
+
+# Buttons events, for vehicle selection
+onevent button.center
+	callsub init
+
+onevent button.right
+	if (button.right == 1) then # on press
+		call math.min(vehicleIndex, vehicleIndex+1, VEHICLE_INDEX_MAX)
+	end
+	
+onevent button.left
+	if (button.left == 1) then # on press
+		call math.max(vehicleIndex, vehicleIndex-1, VEHICLE_INDEX_MIN)
+	end
+	
+onevent button.backward
+	if (button.backward == 1) then # on press
+		if  (vehicleIndex == 2) then
+			vehicle2FearEnabled = 1
+		elseif  (vehicleIndex == 3) then
+			if  (vehicle3ExplorationEnabled == 0) and (vehicle3MultiSensorEnabled == 0) then
+				vehicle3ExplorationEnabled = 1
+			elseif (vehicle3ExplorationEnabled == 1) then
+				vehicle3ExplorationEnabled = 0
+				vehicle3MultiSensorEnabled = 1
+			elseif  (vehicle3MultiSensorEnabled == 1) then
+				vehicle3MultiSensorEnabled = 0
+			end
+		elseif  (vehicleIndex == 5) then
+			vehicle5FearShock = 1
+		end
+	end
+
+onevent button.forward
+	if (button.forward == 1) then # on press
+		if  (vehicleIndex == 2) then
+			vehicle2FearEnabled = 0
+		elseif  (vehicleIndex == 3) then
+			if  (vehicle3ExplorationEnabled == 0) and (vehicle3MultiSensorEnabled == 0) then
+				vehicle3MultiSensorEnabled = 1
+			elseif (vehicle3MultiSensorEnabled == 1) then
+				vehicle3ExplorationEnabled = 1
+				vehicle3MultiSensorEnabled = 0
+			elseif  (vehicle3ExplorationEnabled == 1) then
+				vehicle3ExplorationEnabled = 0
+			end
+		elseif  (vehicleIndex == 5) then
+			vehicle5FearShock = 1
+		end
+	end
+</node>
+
+
+</network>
