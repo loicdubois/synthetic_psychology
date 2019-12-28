@@ -321,7 +321,7 @@ onevent button.forward
 				vehicle3ExplorationEnabled = 0
 			end
 		elseif  (vehicleIndex == 5) then
-			vehicle5FearShock = 1
+			vehicle5FearShock = 0
 		end
 	end
 </node>
