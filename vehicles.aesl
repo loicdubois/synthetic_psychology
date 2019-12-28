@@ -34,11 +34,11 @@
 
 
 <!--node thymio-II-->
-<node nodeId="1" name="thymio-II"># Constant array
+<node nodeId="1" name="thymio-II">############ Constant arrays ############
 var _proxHorizontalDirection[7] = [1,1,1,1,1,-1,-1]
 var _vehicle2And3SpeedSets[10] = [0, 500, 150, 350, 250, 250, 350, 150, 500, 0] # 5 pairs of left/right (or inversely) speeds
 
-# Variables
+############ Variables ############
 var i
 var argmax
 var dummyVariable
@@ -67,7 +67,7 @@ var vehicle5DoMotion
 var vehicle5LoopCounter
 var vehicle5ProxGroundMean
 
-# Functions
+############ Functions ############
 sub init
 	callsub resetLeds
 	mic.threshold = 1 # event on every temperature measurement
@@ -103,13 +103,14 @@ sub processProxHorizontal
 	vehicle1BidirectionalProxHorizontalDirection = 0
 	vehicle2And3Direction = -1
 	
+	# Get max value ever measured
 	call math.mul(proxHorizontalArrayTmp, _proxHorizontalDirection, proxHorizontal)
 	call math.stat(proxHorizontalArrayTmp, dummyVariable, proxHorizontalTmp, dummyVariable)
-	# Get max bounds
 	if (proxHorizontalTmp/100 > proxHorizontalMaxHundredth) then
 		proxHorizontalMaxHundredth = proxHorizontalTmp/100
 	end
-	i = 99
+
+	# Get max value for the current event
 	if  ((vehicleIndex == 1) and (vehicle1EnableBidirectional == 0)) or ((vehicleIndex >= 2) and (vehicleIndex &lt;= 4)) then
 		for i in 0:6 do
 			if (_proxHorizontalDirection[i] > 0) then
@@ -163,7 +164,6 @@ sub vehicle2
 			motor.left.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction+1]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
 			motor.right.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
 		end
-		
 	else
 		motor.left.target = 0
 		motor.right.target = 0
@@ -191,6 +191,7 @@ sub vehicle3
 		motor.right.target = 0
 	end
 	
+	# Vehicle 3c
 	if (vehicle3MultiSensorEnabled == 1) then
 		motor.left.target = motor.left.target + vehicle3SpeedMic + vehicle3SpeedTemperature
 		motor.right.target = motor.right.target - vehicle3SpeedMic + vehicle3SpeedTemperature
@@ -204,8 +205,10 @@ sub vehicle3
 
 # Vehicle 4, values and special tastes
 sub vehicle4
+	# Temperature range
 	if (temperature > VEHICLE4_RANGE_TEMPERATURE_MIN) and (temperature &lt; VEHICLE4_RANGE_TEMPERATURE_MAX) then
 		if (vehicle2And3Direction >= 0) and (vehicle2And3Direction &lt;=4) then
+			# aggression/love depending on threshold
 			if (vehicle1To3ProxHorizontalNormHundredth &lt; VEHICLE4_PROX_THRESHOLD) then
 				motor.left.target = 		_vehicle2And3SpeedSets[2*vehicle2And3Direction]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
 				motor.right.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction+1]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
@@ -218,6 +221,7 @@ sub vehicle4
 			motor.right.target = 0		
 		end
 		
+		# Rotation based on sound
 		motor.left.target = motor.left.target + vehicle4SpeedMic
 		motor.right.target = motor.right.target - vehicle4SpeedMic
 	else
@@ -233,11 +237,12 @@ sub vehicle4
 # Vehicle 5, logic
 sub vehicle5
 	if (vehicle5DoMotion == 1) then
+		# Rotation speed based on ground reflectivity
 		call math.stat(prox.ground.delta, dummyVariable, dummyVariable,vehicle5ProxGroundMean)
 		call math.min(motor.left.target, VEHICLE5_SPEED_MIN+vehicle5ProxGroundMean, VEHICLE5_SPEED_MAX)
 		motor.right.target = VEHICLE5_SPEED_MIN
 		
-		if  (vehicle5LoopCounter == VEHICLE5_LOOP_COUNTS) then
+		if  (vehicle5LoopCounter == VEHICLE5_LOOP_COUNTS) then # flip direction
 			motor.right.target = motor.left.target
 			motor.left.target = VEHICLE5_SPEED_MIN
 		end
@@ -251,11 +256,13 @@ sub vehicle5
 	call leds.bottom.right(LED_MAX, 0, LED_MAX)
 	call leds.bottom.left(LED_MAX, 0, LED_MAX)
 
-# Behavioral events
+############ Events ############
+# Main event
 onevent prox
 	call math.mul(proxHorizontal, prox.horizontal, _proxHorizontalDirection)
 	callsub processProxHorizontal
 	
+	# Behavior selection
 	if (vehicleIndex == 0) then
 		motor.left.target = 0
 		motor.right.target = 0
@@ -309,7 +316,7 @@ onevent timer0
 onevent timer1
 	vehicle5DoMotion = 0
 
-# Buttons events
+# Buttons events, for vehicle selection
 onevent button.center
 	callsub init
 
