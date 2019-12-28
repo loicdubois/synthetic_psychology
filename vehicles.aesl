@@ -6,21 +6,19 @@
 
 
 <!--list of constants-->
-<constant value="32767" name="INT16_MAX"/>
 <constant value="4" name="LED_LOW"/>
 <constant value="32" name="LED_MAX"/>
 <constant value="500" name="MOTOR_MAX"/>
 <constant value="0" name="VEHICLE_INDEX_MIN"/>
 <constant value="5" name="VEHICLE_INDEX_MAX"/>
-<constant value="500" name="VEHICLE1_SPEED_MULTIPLIER"/>
 <constant value="3" name="VEHICLE3_SPEED_TEMPERATURE_DIVIDER"/>
 <constant value="4" name="VEHICLE3_SPEED_MIC_DIVIDER"/>
 <constant value="10" name="VEHICLE4_MIC_THRESHOLD"/>
-<constant value="250" name="VEHICLE4_RANGE_TEMPERATURE_MIN"/>
-<constant value="350" name="VEHICLE4_RANGE_TEMPERATURE_MAX"/>
 <constant value="15" name="VEHICLE4_PROX_THRESHOLD"/>
 <constant value="3" name="VEHICLE4_SPEED_MIC_DIVIDER"/>
 <constant value="10" name="VEHICLE4_SPEED_MIC_OFFSET"/>
+<constant value="250" name="VEHICLE5_RANGE_TEMPERATURE_MIN"/>
+<constant value="350" name="VEHICLE5_RANGE_TEMPERATURE_MAX"/>
 <constant value="5000" name="VEHICLE5_TIMER_PERIOD_MS"/>
 <constant value="1000" name="VEHICLE5_ACTIVATION_DURATION_MS"/>
 <constant value="300" name="VEHICLE5_TEMPERATURE_REFERENCE"/>
@@ -135,7 +133,7 @@ sub processProxHorizontal
 sub vehicle1
 	# Compute commands
 	if (proxHorizontalMaxHundredth > 0) then
-	    vehicle1Speed = (VEHICLE1_SPEED_MULTIPLIER*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth)*vehicle1BidirectionalProxHorizontalDirection	
+	    vehicle1Speed = (MOTOR_MAX*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth)*vehicle1BidirectionalProxHorizontalDirection	
 	else
 	    vehicle1Speed = 0
 	end
@@ -205,29 +203,23 @@ sub vehicle3
 
 # Vehicle 4, values and special tastes
 sub vehicle4
-	# Temperature range
-	if (temperature > VEHICLE4_RANGE_TEMPERATURE_MIN) and (temperature &lt; VEHICLE4_RANGE_TEMPERATURE_MAX) then
-		if (vehicle2And3Direction >= 0) and (vehicle2And3Direction &lt;=4) then
-			# aggression/love depending on threshold
-			if (vehicle1To3ProxHorizontalNormHundredth &lt; VEHICLE4_PROX_THRESHOLD) then
-				motor.left.target = 		_vehicle2And3SpeedSets[2*vehicle2And3Direction]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
-				motor.right.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction+1]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
-			else
-				motor.left.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction]*(proxHorizontalMaxHundredth-vehicle1To3ProxHorizontalNormHundredth)/proxHorizontalMaxHundredth
-				motor.right.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction+1]*(proxHorizontalMaxHundredth-vehicle1To3ProxHorizontalNormHundredth)/proxHorizontalMaxHundredth
-			end
+	if (vehicle2And3Direction >= 0) and (vehicle2And3Direction &lt;=4) then
+		# aggression/love depending on threshold
+		if (vehicle1To3ProxHorizontalNormHundredth &lt; VEHICLE4_PROX_THRESHOLD) then
+			motor.left.target = 		_vehicle2And3SpeedSets[2*vehicle2And3Direction]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
+			motor.right.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction+1]*vehicle1To3ProxHorizontalNormHundredth/proxHorizontalMaxHundredth
 		else
-			motor.left.target = 0
-			motor.right.target = 0		
+			motor.left.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction]*(proxHorizontalMaxHundredth-vehicle1To3ProxHorizontalNormHundredth)/proxHorizontalMaxHundredth
+			motor.right.target = _vehicle2And3SpeedSets[2*vehicle2And3Direction+1]*(proxHorizontalMaxHundredth-vehicle1To3ProxHorizontalNormHundredth)/proxHorizontalMaxHundredth
 		end
-		
-		# Rotation based on sound
-		motor.left.target = motor.left.target + vehicle4SpeedMic
-		motor.right.target = motor.right.target - vehicle4SpeedMic
 	else
 		motor.left.target = 0
-		motor.right.target = 0
+		motor.right.target = 0		
 	end
+	
+	# Rotation based on sound
+	motor.left.target = motor.left.target + vehicle4SpeedMic
+	motor.right.target = motor.right.target - vehicle4SpeedMic
 	
 	# Visual feedback
 	call leds.top(LED_MAX, 0, LED_MAX/2)
@@ -236,15 +228,21 @@ sub vehicle4
 	
 # Vehicle 5, logic
 sub vehicle5
-	if (vehicle5DoMotion == 1) then
-		# Rotation speed based on ground reflectivity
-		call math.stat(prox.ground.delta, dummyVariable, dummyVariable,vehicle5ProxGroundMean)
-		call math.min(motor.left.target, VEHICLE5_SPEED_MIN+vehicle5ProxGroundMean, VEHICLE5_SPEED_MAX)
-		motor.right.target = VEHICLE5_SPEED_MIN
-		
-		if  (vehicle5LoopCounter == VEHICLE5_LOOP_COUNTS) then # flip direction
-			motor.right.target = motor.left.target
-			motor.left.target = VEHICLE5_SPEED_MIN
+	# Temperature range
+	if (temperature > VEHICLE5_RANGE_TEMPERATURE_MIN) and (temperature &lt; VEHICLE5_RANGE_TEMPERATURE_MAX) then
+		if (vehicle5DoMotion == 1) then
+			# Rotation speed based on ground reflectivity
+			call math.stat(prox.ground.delta, dummyVariable, dummyVariable,vehicle5ProxGroundMean)
+			call math.min(motor.left.target, VEHICLE5_SPEED_MIN+vehicle5ProxGroundMean, VEHICLE5_SPEED_MAX)
+			motor.right.target = VEHICLE5_SPEED_MIN
+			
+			if  (vehicle5LoopCounter == VEHICLE5_LOOP_COUNTS) then # flip direction
+				motor.right.target = motor.left.target
+				motor.left.target = VEHICLE5_SPEED_MIN
+			end
+		else
+			motor.left.target = 0
+			motor.right.target = 0
 		end
 	else
 		motor.left.target = 0
